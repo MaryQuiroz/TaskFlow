@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 
 // Crear instancia de axios con configuración base
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1',
+  baseURL: '/api/v1',
   headers: {
     'Content-Type': 'application/json'
   }
@@ -45,10 +45,12 @@ api.interceptors.response.use(
     }
     // Manejar errores del servidor
     else if (error.response?.status === 500) {
+      console.error('Error del servidor:', error.response?.data);
       toast.error('Error interno del servidor');
     }
     // Otros errores
     else {
+      console.error('Error en la petición:', error);
       toast.error(message);
     }
 

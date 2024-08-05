@@ -349,21 +349,44 @@ exports.enviarRecordatorio = async (req, res) => {
 // Obtener estadísticas de facturación
 exports.getEstadisticasFacturacion = async (req, res) => {
   try {
+    // Construir el query base
     const query = req.user.rol !== 'admin' ? { emisor: req.user.id } : {};
 
-    const facturas = await Factura.find(query);
+    // Obtener el mes actual
+    const now = new Date();
+    const primerDiaMes = new Date(now.getFullYear(), now.getMonth(), 1);
+    const ultimoDiaMes = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
+    // Agregar filtro de fecha para el mes actual
+    const queryMesActual = {
+      ...query,
+      fechaEmision: {
+        $gte: primerDiaMes,
+        $lte: ultimoDiaMes
+      }
+    };
+
+    // Obtener todas las facturas y las del mes actual
+    const [todasFacturas, facturasMesActual] = await Promise.all([
+      Factura.find(query),
+      Factura.find(queryMesActual)
+    ]);
+
+    // Calcular estadísticas
     const estadisticas = {
-      totalFacturas: facturas.length,
-      facturasPendientes: facturas.filter(f => f.estado === 'pendiente').length,
-      facturasVencidas: facturas.filter(f => f.estado === 'vencida').length,
-      facturasPagadas: facturas.filter(f => f.estado === 'pagada').length,
-      montoTotalFacturado: facturas.reduce((total, f) => total + f.total, 0),
-      montoPendiente: facturas
+      totalFacturas: todasFacturas.length,
+      facturasPendientes: todasFacturas.filter(f => f.estado === 'pendiente').length,
+      facturasVencidas: todasFacturas.filter(f => f.estado === 'vencida').length,
+      facturasPagadas: todasFacturas.filter(f => f.estado === 'pagada').length,
+      montoTotalFacturado: todasFacturas.reduce((total, f) => total + f.total, 0),
+      montoFacturadoMesActual: facturasMesActual.reduce((total, f) => total + f.total, 0),
+      montoPendiente: todasFacturas
         .filter(f => f.estado === 'pendiente' || f.estado === 'vencida')
         .reduce((total, f) => total + f.montoPendiente, 0),
-      montoCobrado: facturas
-        .reduce((total, f) => total + f.historialPagos.reduce((t, p) => t + p.monto, 0), 0)
+      montoCobrado: todasFacturas
+        .reduce((total, f) => total + (f.total - f.montoPendiente), 0),
+      montoCobradoMesActual: facturasMesActual
+        .reduce((total, f) => total + (f.total - f.montoPendiente), 0)
     };
 
     res.status(200).json({
@@ -371,6 +394,7 @@ exports.getEstadisticasFacturacion = async (req, res) => {
       data: estadisticas
     });
   } catch (error) {
+    console.error('Error al obtener estadísticas:', error);
     res.status(500).json({
       success: false,
       message: 'Error al obtener estadísticas de facturación',

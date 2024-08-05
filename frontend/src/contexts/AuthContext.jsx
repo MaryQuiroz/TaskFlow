@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import toast from 'react-hot-toast';
+import api, { authService } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -23,13 +23,17 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
+  useEffect(() => {
+    if (token) {
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    } else {
+      delete api.defaults.headers.common['Authorization'];
+    }
+  }, [token]);
+
   const checkAuth = async () => {
     try {
-      const response = await axios.get('/api/v1/auth/me', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
+      const response = await authService.getProfile();
       setUser(response.data.data);
       setLoading(false);
     } catch (error) {
@@ -40,17 +44,12 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      const response = await axios.post('/api/v1/auth/login', {
-        email,
-        password
-      });
-
+      const response = await authService.login({ email, password });
       const { token: newToken, usuario } = response.data;
+      
       setToken(newToken);
       setUser(usuario);
       localStorage.setItem('token', newToken);
-      
-      axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
       
       toast.success('¡Bienvenido!');
       navigate('/dashboard');
@@ -64,14 +63,12 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (userData) => {
     try {
-      const response = await axios.post('/api/v1/auth/registro', userData);
-      
+      const response = await authService.register(userData);
       const { token: newToken, usuario } = response.data;
+      
       setToken(newToken);
       setUser(usuario);
       localStorage.setItem('token', newToken);
-      
-      axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
       
       toast.success('¡Registro exitoso!');
       navigate('/dashboard');
@@ -87,19 +84,14 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     setToken(null);
     localStorage.removeItem('token');
-    delete axios.defaults.headers.common['Authorization'];
+    delete api.defaults.headers.common['Authorization'];
     navigate('/login');
     toast.success('Sesión cerrada');
   };
 
   const updateProfile = async (userData) => {
     try {
-      const response = await axios.put('/api/v1/auth/update-details', userData, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-      
+      const response = await authService.updateProfile(userData);
       setUser(response.data.data);
       toast.success('Perfil actualizado exitosamente');
       return true;
@@ -112,12 +104,7 @@ export const AuthProvider = ({ children }) => {
 
   const updatePassword = async (passwords) => {
     try {
-      await axios.put('/api/v1/auth/update-password', passwords, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-      
+      await authService.updatePassword(passwords);
       toast.success('Contraseña actualizada exitosamente');
       return true;
     } catch (error) {
@@ -129,7 +116,7 @@ export const AuthProvider = ({ children }) => {
 
   const forgotPassword = async (email) => {
     try {
-      await axios.post('/api/v1/auth/forgot-password', { email });
+      await authService.forgotPassword(email);
       toast.success('Se ha enviado un email con las instrucciones');
       return true;
     } catch (error) {
@@ -141,7 +128,7 @@ export const AuthProvider = ({ children }) => {
 
   const resetPassword = async (token, password) => {
     try {
-      await axios.put(`/api/v1/auth/reset-password/${token}`, { password });
+      await authService.resetPassword(token, password);
       toast.success('Contraseña restablecida exitosamente');
       navigate('/login');
       return true;

@@ -1,5 +1,4 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from 'react-query';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -18,53 +17,39 @@ import Reportes from './pages/reportes/Reportes';
 import Perfil from './pages/perfil/Perfil';
 import Configuracion from './pages/configuracion/Configuracion';
 
-// Configuración de React Query
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: false,
-      retry: false,
-    },
-  },
-});
-
 function App() {
   return (
     <Router>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <Routes>
-            {/* Rutas públicas */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/registro" element={<Register />} />
-            <Route path="/olvide-password" element={<ForgotPassword />} />
-            <Route path="/reset-password/:token" element={<ResetPassword />} />
+      <AuthProvider>
+        <Routes>
+          {/* Rutas públicas */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/registro" element={<Register />} />
+          <Route path="/olvide-password" element={<ForgotPassword />} />
+          <Route path="/reset-password/:token" element={<ResetPassword />} />
 
-            {/* Rutas protegidas */}
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <DashboardLayout>
-                    <Routes>
-                      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                      <Route path="/dashboard" element={<Dashboard />} />
-                      <Route path="/proyectos/*" element={<Proyectos />} />
-                      <Route path="/clientes/*" element={<Clientes />} />
-                      <Route path="/facturas/*" element={<Facturas />} />
-                      <Route path="/reportes" element={<Reportes />} />
-                      <Route path="/perfil" element={<Perfil />} />
-                      <Route path="/configuracion" element={<Configuracion />} />
-                    </Routes>
-                  </DashboardLayout>
-                </ProtectedRoute>
-              }
-            />
+          {/* Rutas protegidas */}
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route path="dashboard" element={<Dashboard />} />
+            <Route path="proyectos/*" element={<Proyectos />} />
+            <Route path="clientes/*" element={<Clientes />} />
+            <Route path="facturas/*" element={<Facturas />} />
+            <Route path="reportes" element={<Reportes />} />
+            <Route path="perfil" element={<Perfil />} />
+            <Route path="configuracion" element={<Configuracion />} />
+          </Route>
 
-            {/* Ruta 404 */}
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
-        </AuthProvider>
+          {/* Ruta 404 */}
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
         <Toaster
           position="top-right"
           toastOptions={{
@@ -81,7 +66,7 @@ function App() {
             },
           }}
         />
-      </QueryClientProvider>
+      </AuthProvider>
     </Router>
   );
 }

@@ -16,6 +16,9 @@ const Factura = require('../models/Factura');
 // Proteger todas las rutas
 router.use(protect);
 
+// Ruta para estadísticas (debe ir antes de las rutas con :id)
+router.get('/estadisticas', getEstadisticasFacturacion);
+
 // Rutas CRUD básicas
 router
   .route('/')
@@ -35,10 +38,5 @@ router
 router
   .route('/:id/recordatorio')
   .post(checkOwnership(Factura), enviarRecordatorio);
-
-// Ruta para estadísticas
-router
-  .route('/estadisticas')
-  .get(getEstadisticasFacturacion);
 
 module.exports = router;

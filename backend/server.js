@@ -25,7 +25,10 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Implementar CORS
-app.use(cors());
+app.use(cors({
+  origin: process.env.NODE_ENV === 'development' ? 'http://localhost:5173' : process.env.FRONTEND_URL,
+  credentials: true
+}));
 
 // Seguridad HTTP headers
 app.use(helmet());
@@ -62,9 +65,13 @@ app.use((req, res, next) => {
   });
 });
 
+// Manejo de errores JWT
+const { handleJWTError } = require('./middleware/auth');
+app.use(handleJWTError);
+
 // Manejo de errores global
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error('Error:', err);
 
   // Manejar errores de MongoDB
   if (err.name === 'CastError') {
@@ -102,7 +109,7 @@ app.use((err, req, res, next) => {
 });
 
 // Puerto
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 // Iniciar servidor
 const server = app.listen(PORT, () => {

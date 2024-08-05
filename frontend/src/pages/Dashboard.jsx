@@ -5,37 +5,34 @@ import {
   UsersIcon,
   DocumentTextIcon,
   ChartBarIcon,
-  ArrowTrendingUpIcon,
-  ClockIcon,
-  BanknotesIcon,
-  ExclamationCircleIcon
 } from '@heroicons/react/24/outline';
 import { projectService, clientService, invoiceService } from '../services/api';
 
-const statCards = [
-  { name: 'Proyectos Activos', icon: ClipboardDocumentListIcon, color: 'bg-blue-500' },
-  { name: 'Total Clientes', icon: UsersIcon, color: 'bg-green-500' },
-  { name: 'Facturas Pendientes', icon: DocumentTextIcon, color: 'bg-yellow-500' },
-  { name: 'Ingresos del Mes', icon: ChartBarIcon, color: 'bg-purple-500' },
-];
-
 export default function Dashboard() {
-  const { data: proyectosStats, isLoading: loadingProyectos } = useQuery(
+  const { data: proyectosData, isLoading: loadingProyectos } = useQuery(
     'proyectosStats',
     () => projectService.getAll({ estado: 'en_progreso' })
   );
 
-  const { data: clientesStats, isLoading: loadingClientes } = useQuery(
+  const { data: clientesData, isLoading: loadingClientes } = useQuery(
     'clientesStats',
     () => clientService.getAll()
   );
 
-  const { data: facturasStats, isLoading: loadingFacturas } = useQuery(
+  const { data: facturasData, isLoading: loadingFacturas } = useQuery(
     'facturasStats',
-    () => invoiceService.getStats()
+    () => invoiceService.getStats(),
+    {
+      retry: false // No reintentar si falla
+    }
   );
 
   const isLoading = loadingProyectos || loadingClientes || loadingFacturas;
+
+  // Extraer los datos de manera segura
+  const proyectos = proyectosData?.data?.data || [];
+  const clientes = clientesData?.data?.data || [];
+  const facturas = facturasData?.data || {};
 
   return (
     <div>
@@ -60,7 +57,7 @@ export default function Dashboard() {
                 </dt>
                 <dd className="flex items-baseline">
                   <div className="text-2xl font-semibold text-white">
-                    {isLoading ? '...' : proyectosStats?.data?.length || 0}
+                    {isLoading ? '...' : proyectos.length}
                   </div>
                 </dd>
               </dl>
@@ -80,7 +77,7 @@ export default function Dashboard() {
                 </dt>
                 <dd className="flex items-baseline">
                   <div className="text-2xl font-semibold text-white">
-                    {isLoading ? '...' : clientesStats?.data?.length || 0}
+                    {isLoading ? '...' : clientes.length}
                   </div>
                 </dd>
               </dl>
@@ -100,7 +97,7 @@ export default function Dashboard() {
                 </dt>
                 <dd className="flex items-baseline">
                   <div className="text-2xl font-semibold text-white">
-                    {isLoading ? '...' : facturasStats?.data?.facturasPendientes || 0}
+                    {isLoading ? '...' : facturas.facturasPendientes || 0}
                   </div>
                 </dd>
               </dl>
@@ -120,7 +117,7 @@ export default function Dashboard() {
                 </dt>
                 <dd className="flex items-baseline">
                   <div className="text-2xl font-semibold text-white">
-                    ${isLoading ? '...' : (facturasStats?.data?.montoCobrado || 0).toLocaleString()}
+                    ${isLoading ? '...' : (facturas.montoCobrado || 0).toLocaleString()}
                   </div>
                 </dd>
               </dl>
@@ -145,13 +142,13 @@ export default function Dashboard() {
                 <div key={i} className="h-16 bg-gray-200 rounded"></div>
               ))}
             </div>
-          ) : proyectosStats?.data?.length === 0 ? (
+          ) : proyectos.length === 0 ? (
             <div className="text-center py-4 text-gray-500">
               No hay proyectos activos
             </div>
           ) : (
             <div className="space-y-4">
-              {proyectosStats?.data?.slice(0, 3).map((proyecto) => (
+              {proyectos.slice(0, 3).map((proyecto) => (
                 <Link
                   key={proyecto._id}
                   to={`/proyectos/${proyecto._id}`}
@@ -160,9 +157,22 @@ export default function Dashboard() {
                   <div className="flex justify-between items-center">
                     <div>
                       <h3 className="text-sm font-medium text-gray-900">{proyecto.nombre}</h3>
-                      <p className="text-sm text-gray-500">{proyecto.cliente.nombre}</p>
+                      <div className="flex items-center space-x-2">
+                        <p className="text-sm text-gray-500">{proyecto.cliente?.nombre || 'Sin cliente'}</p>
+                        <span className="text-sm text-gray-400">•</span>
+                        <p className="text-sm text-gray-500">{proyecto.diasRestantes} días restantes</p>
+                      </div>
                     </div>
-                    <span className="badge badge-success">{proyecto.progreso}%</span>
+                    <div className="flex flex-col items-end">
+                      <span className={`badge ${
+                        proyecto.progreso >= 75 ? 'badge-success' : 
+                        proyecto.progreso >= 50 ? 'badge-info' :
+                        proyecto.progreso >= 25 ? 'badge-warning' :
+                        'badge-error'
+                      }`}>
+                        {proyecto.progreso}%
+                      </span>
+                    </div>
                   </div>
                 </Link>
               ))}
@@ -184,15 +194,14 @@ export default function Dashboard() {
                 <div key={i} className="h-16 bg-gray-200 rounded"></div>
               ))}
             </div>
-          ) : facturasStats?.data?.facturasPendientes === 0 ? (
+          ) : !facturas.facturasPendientes ? (
             <div className="text-center py-4 text-gray-500">
               No hay facturas pendientes
             </div>
           ) : (
             <div className="space-y-4">
-              {/* Aquí irían las facturas pendientes */}
               <div className="text-center py-4 text-gray-500">
-                Cargando facturas...
+                Próximamente: Lista de facturas pendientes
               </div>
             </div>
           )}
