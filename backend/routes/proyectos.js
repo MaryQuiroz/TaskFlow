@@ -25,7 +25,7 @@ router
 
 router
   .route('/:id')
-  .get(checkOwnership(Proyecto), getProyecto)
+  .get(getProyecto) // Removido checkOwnership para permitir ver detalles
   .put(checkOwnership(Proyecto), updateProyecto)
   .delete(checkOwnership(Proyecto), deleteProyecto);
 

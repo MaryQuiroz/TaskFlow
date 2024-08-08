@@ -11,7 +11,7 @@ import ForgotPassword from './pages/auth/ForgotPassword';
 import ResetPassword from './pages/auth/ResetPassword';
 import Dashboard from './pages/Dashboard';
 import Proyectos from './pages/proyectos/Proyectos';
-import Clientes from './pages/clientes/Clientes';
+import ClientesRoutes from './pages/clientes/ClientesRoutes';
 import Facturas from './pages/facturas/Facturas';
 import Reportes from './pages/reportes/Reportes';
 import Perfil from './pages/perfil/Perfil';
@@ -40,7 +40,7 @@ function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="proyectos/*" element={<Proyectos />} />
-            <Route path="clientes/*" element={<Clientes />} />
+            <Route path="clientes/*" element={<ClientesRoutes />} />
             <Route path="facturas/*" element={<Facturas />} />
             <Route path="reportes" element={<Reportes />} />
             <Route path="perfil" element={<Perfil />} />

@@ -66,7 +66,13 @@ exports.checkOwnership = (Model) => async (req, res, next) => {
     }
 
     // Verificar si el usuario es propietario o admin
-    if (recurso.usuario.toString() !== req.user.id && req.user.rol !== 'admin') {
+    // Si es un proyecto, verificar el campo 'responsable' en lugar de 'usuario'
+    const userId = req.user.id;
+    const isOwner = Model.modelName === 'Proyecto'
+      ? recurso.responsable?.toString() === userId
+      : recurso.usuario?.toString() === userId;
+
+    if (!isOwner && req.user.rol !== 'admin') {
       return res.status(403).json({
         success: false,
         message: 'No está autorizado para modificar este recurso'

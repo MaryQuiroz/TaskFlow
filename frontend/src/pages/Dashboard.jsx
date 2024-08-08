@@ -9,9 +9,24 @@ import {
 import { projectService, clientService, invoiceService } from '../services/api';
 
 export default function Dashboard() {
+  // Obtener proyectos activos (en progreso y planificación)
   const { data: proyectosData, isLoading: loadingProyectos } = useQuery(
     'proyectosStats',
-    () => projectService.getAll({ estado: 'en_progreso' })
+    async () => {
+      const [enProgreso, planificacion] = await Promise.all([
+        projectService.getAll({ estado: 'en_progreso' }),
+        projectService.getAll({ estado: 'planificacion' })
+      ]);
+      
+      return {
+        data: {
+          data: [
+            ...(enProgreso.data.data || []),
+            ...(planificacion.data.data || [])
+          ]
+        }
+      };
+    }
   );
 
   const { data: clientesData, isLoading: loadingClientes } = useQuery(
@@ -21,10 +36,7 @@ export default function Dashboard() {
 
   const { data: facturasData, isLoading: loadingFacturas } = useQuery(
     'facturasStats',
-    () => invoiceService.getStats(),
-    {
-      retry: false // No reintentar si falla
-    }
+    () => invoiceService.getStats()
   );
 
   const isLoading = loadingProyectos || loadingClientes || loadingFacturas;
@@ -32,7 +44,7 @@ export default function Dashboard() {
   // Extraer los datos de manera segura
   const proyectos = proyectosData?.data?.data || [];
   const clientes = clientesData?.data?.data || [];
-  const facturas = facturasData?.data || {};
+  const estadisticasFacturas = facturasData?.data?.data || {};
 
   return (
     <div>
@@ -97,7 +109,7 @@ export default function Dashboard() {
                 </dt>
                 <dd className="flex items-baseline">
                   <div className="text-2xl font-semibold text-white">
-                    {isLoading ? '...' : facturas.facturasPendientes || 0}
+                    {isLoading ? '...' : estadisticasFacturas.facturasPendientes || 0}
                   </div>
                 </dd>
               </dl>
@@ -117,7 +129,7 @@ export default function Dashboard() {
                 </dt>
                 <dd className="flex items-baseline">
                   <div className="text-2xl font-semibold text-white">
-                    ${isLoading ? '...' : (facturas.montoCobrado || 0).toLocaleString()}
+                    ${isLoading ? '...' : (estadisticasFacturas.montoCobradoMesActual || 0).toLocaleString()}
                   </div>
                 </dd>
               </dl>
@@ -194,7 +206,7 @@ export default function Dashboard() {
                 <div key={i} className="h-16 bg-gray-200 rounded"></div>
               ))}
             </div>
-          ) : !facturas.facturasPendientes ? (
+          ) : !estadisticasFacturas.facturasPendientes ? (
             <div className="text-center py-4 text-gray-500">
               No hay facturas pendientes
             </div>

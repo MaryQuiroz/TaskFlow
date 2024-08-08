@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from 'react-query';
-import { Link } from 'react-router-dom';
+import { Link, Routes, Route } from 'react-router-dom';
 import { projectService } from '../../services/api';
 import {
   PlusIcon,
@@ -9,19 +9,21 @@ import {
   ClockIcon,
   UserGroupIcon,
 } from '@heroicons/react/24/outline';
+import NuevoProyecto from './NuevoProyecto';
+import DetalleProyecto from './DetalleProyecto';
 
-export default function Proyectos() {
+function ListaProyectos() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('todos');
 
-  const { data: proyectos, isLoading } = useQuery(
+  const { data: proyectosResponse, isLoading } = useQuery(
     ['proyectos', filterStatus],
     () => projectService.getAll({ estado: filterStatus !== 'todos' ? filterStatus : undefined })
   );
 
-  const filteredProyectos = proyectos?.data?.filter(proyecto =>
+  const filteredProyectos = proyectosResponse?.data?.data?.filter(proyecto =>
     proyecto.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    proyecto.descripcion.toLowerCase().includes(searchTerm.toLowerCase())
+    proyecto.descripcion?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getStatusBadgeClass = (estado) => {
@@ -53,7 +55,7 @@ export default function Proyectos() {
         <div className="mt-4 sm:mt-0">
           <Link
             to="/proyectos/nuevo"
-            className="btn-primary"
+            className="inline-flex items-center justify-center rounded-md border border-transparent bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
           >
             <PlusIcon className="-ml-1 mr-2 h-5 w-5" aria-hidden="true" />
             Nuevo Proyecto
@@ -67,14 +69,14 @@ export default function Proyectos() {
           <input
             type="text"
             placeholder="Buscar proyectos..."
-            className="input-primary"
+            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
         <div className="mt-3 sm:mt-0 sm:ml-4">
           <select
-            className="input-primary"
+            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
           >
@@ -112,7 +114,7 @@ export default function Proyectos() {
             <div className="mt-6">
               <Link
                 to="/proyectos/nuevo"
-                className="btn-primary"
+                className="inline-flex items-center justify-center rounded-md border border-transparent bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
               >
                 <PlusIcon className="-ml-1 mr-2 h-5 w-5" aria-hidden="true" />
                 Nuevo Proyecto
@@ -171,5 +173,15 @@ export default function Proyectos() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function Proyectos() {
+  return (
+    <Routes>
+      <Route index element={<ListaProyectos />} />
+      <Route path="nuevo" element={<NuevoProyecto />} />
+      <Route path=":id" element={<DetalleProyecto />} />
+    </Routes>
   );
 }

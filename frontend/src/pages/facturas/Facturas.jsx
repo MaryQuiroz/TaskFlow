@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from 'react-query';
 import { Link } from 'react-router-dom';
 import { invoiceService } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 import {
   PlusIcon,
   DocumentTextIcon,
@@ -14,15 +15,29 @@ import {
 export default function Facturas() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('todas');
+  const { token } = useAuth();
 
-  const { data: facturas, isLoading } = useQuery(
+  const { data, isLoading, error } = useQuery(
     ['facturas', filterStatus],
-    () => invoiceService.getAll({ estado: filterStatus !== 'todas' ? filterStatus : undefined })
+    async () => {
+      const response = await invoiceService.getAll({ 
+        estado: filterStatus !== 'todas' ? filterStatus : undefined 
+      });
+      return response.data;
+    },
+    {
+      enabled: !!token,
+      staleTime: 30000, // Considerar datos frescos por 30 segundos
+      retry: 2, // Reintentar 2 veces en caso de error
+    }
   );
 
-  const filteredFacturas = facturas?.data?.filter(factura =>
+  // Extraer las facturas de forma segura
+  const facturas = data?.data || [];
+
+  const filteredFacturas = facturas.filter(factura =>
     factura.numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    factura.cliente?.nombre.toLowerCase().includes(searchTerm.toLowerCase())
+    factura.cliente?.nombre?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getStatusBadgeClass = (estado) => {
@@ -39,6 +54,18 @@ export default function Facturas() {
         return 'bg-gray-100 text-gray-800';
     }
   };
+
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <DocumentTextIcon className="mx-auto h-12 w-12 text-red-400" />
+        <h3 className="mt-2 text-sm font-medium text-gray-900">Error al cargar facturas</h3>
+        <p className="mt-1 text-sm text-gray-500">
+          {error.response?.data?.message || 'Por favor, intenta nuevamente más tarde'}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -100,7 +127,7 @@ export default function Facturas() {
               </div>
             ))}
           </div>
-        ) : filteredFacturas?.length === 0 ? (
+        ) : filteredFacturas.length === 0 ? (
           <div className="text-center py-12">
             <DocumentTextIcon className="mx-auto h-12 w-12 text-gray-400" />
             <h3 className="mt-2 text-sm font-medium text-gray-900">No hay facturas</h3>
@@ -119,7 +146,7 @@ export default function Facturas() {
           </div>
         ) : (
           <ul className="divide-y divide-gray-200">
-            {filteredFacturas?.map((factura) => (
+            {filteredFacturas.map((factura) => (
               <li key={factura._id}>
                 <Link
                   to={`/facturas/${factura._id}`}

@@ -5,89 +5,52 @@ const Factura = require('../models/Factura');
 // Obtener todos los clientes
 exports.getClientes = async (req, res) => {
   try {
-    let query;
-
-    // Copia de req.query
-    const reqQuery = { ...req.query };
-
-    // Campos a excluir
-    const removeFields = ['select', 'sort', 'page', 'limit'];
-    removeFields.forEach(param => delete reqQuery[param]);
-
-    // Filtrar por usuario actual si no es admin
-    if (req.user.rol !== 'admin') {
-      reqQuery.usuario = req.user.id;
+    // Verificar si el usuario está autenticado
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({
+        success: false,
+        message: 'Usuario no autenticado'
+      });
     }
 
-    // Crear query string
-    let queryStr = JSON.stringify(reqQuery);
-    queryStr = queryStr.replace(/\b(gt|gte|lt|lte|in)\b/g, match => `$${match}`);
+    // Construir query base
+    const query = {
+      usuario: req.user.id
+    };
 
-    // Encontrar clientes
-    query = Cliente.find(JSON.parse(queryStr));
-
-    // Select Fields
-    if (req.query.select) {
-      const fields = req.query.select.split(',').join(' ');
-      query = query.select(fields);
+    // Si es admin, no filtrar por usuario
+    if (req.user.rol === 'admin') {
+      delete query.usuario;
     }
 
-    // Sort
-    if (req.query.sort) {
-      const sortBy = req.query.sort.split(',').join(' ');
-      query = query.sort(sortBy);
-    } else {
-      query = query.sort('-createdAt');
-    }
+    // Ejecutar query con populate básico
+    const clientes = await Cliente.find(query)
+      .select('nombre email telefono empresa activo createdAt')
+      .lean()
+      .exec();
 
-    // Pagination
-    const page = parseInt(req.query.page, 10) || 1;
-    const limit = parseInt(req.query.limit, 10) || 10;
-    const startIndex = (page - 1) * limit;
-    const endIndex = page * limit;
-    const total = await Cliente.countDocuments(JSON.parse(queryStr));
+    // Obtener conteos relacionados para cada cliente
+    const clientesConConteos = await Promise.all(clientes.map(async (cliente) => {
+      const [proyectos, facturas] = await Promise.all([
+        Proyecto.countDocuments({ cliente: cliente._id }),
+        Factura.countDocuments({ cliente: cliente._id })
+      ]);
 
-    query = query.skip(startIndex).limit(limit);
-
-    // Populate con proyectos y facturas
-    query = query.populate([
-      { 
-        path: 'proyectos',
-        select: 'nombre estado fechaInicio fechaFinalizacion'
-      },
-      {
-        path: 'facturas',
-        select: 'numero estado total fechaEmision fechaVencimiento'
-      }
-    ]);
-
-    // Ejecutar query
-    const clientes = await query;
-
-    // Pagination result
-    const pagination = {};
-
-    if (endIndex < total) {
-      pagination.next = {
-        page: page + 1,
-        limit
+      return {
+        ...cliente,
+        proyectosCount: proyectos,
+        facturasCount: facturas
       };
-    }
-
-    if (startIndex > 0) {
-      pagination.prev = {
-        page: page - 1,
-        limit
-      };
-    }
+    }));
 
     res.status(200).json({
       success: true,
-      count: clientes.length,
-      pagination,
-      data: clientes
+      count: clientesConConteos.length,
+      data: clientesConConteos
     });
+
   } catch (error) {
+    console.error('Error en getClientes:', error);
     res.status(500).json({
       success: false,
       message: 'Error al obtener clientes',
@@ -99,16 +62,17 @@ exports.getClientes = async (req, res) => {
 // Obtener un cliente específico
 exports.getCliente = async (req, res) => {
   try {
-    const cliente = await Cliente.findById(req.params.id).populate([
-      {
-        path: 'proyectos',
-        select: 'nombre estado fechaInicio fechaFinalizacion presupuesto'
-      },
-      {
-        path: 'facturas',
-        select: 'numero estado total fechaEmision fechaVencimiento'
-      }
-    ]);
+    const cliente = await Cliente.findById(req.params.id)
+      .populate([
+        {
+          path: 'proyectos',
+          select: 'nombre estado fechaInicio fechaFinalizacion presupuesto'
+        },
+        {
+          path: 'facturas',
+          select: 'numero estado total fechaEmision fechaVencimiento'
+        }
+      ]);
 
     if (!cliente) {
       return res.status(404).json({
@@ -118,7 +82,9 @@ exports.getCliente = async (req, res) => {
     }
 
     // Verificar propiedad del cliente
-    if (cliente.usuario.toString() !== req.user.id && req.user.rol !== 'admin') {
+    if (req.user && cliente.usuario && 
+        cliente.usuario.toString() !== req.user.id && 
+        req.user.rol !== 'admin') {
       return res.status(403).json({
         success: false,
         message: 'No autorizado para ver este cliente'
@@ -141,8 +107,23 @@ exports.getCliente = async (req, res) => {
 // Crear nuevo cliente
 exports.crearCliente = async (req, res) => {
   try {
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({
+        success: false,
+        message: 'Usuario no autenticado'
+      });
+    }
+
     // Asignar usuario actual
     req.body.usuario = req.user.id;
+
+    // Verificar campos requeridos
+    if (!req.body.nombre || !req.body.email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Por favor proporcione nombre y email'
+      });
+    }
 
     // Verificar si ya existe un cliente con el mismo email para este usuario
     const clienteExistente = await Cliente.findOne({
@@ -164,6 +145,7 @@ exports.crearCliente = async (req, res) => {
       data: cliente
     });
   } catch (error) {
+    console.error('Error al crear cliente:', error);
     res.status(400).json({
       success: false,
       message: 'Error al crear el cliente',
@@ -185,7 +167,9 @@ exports.updateCliente = async (req, res) => {
     }
 
     // Verificar propiedad del cliente
-    if (cliente.usuario.toString() !== req.user.id && req.user.rol !== 'admin') {
+    if (req.user && cliente.usuario && 
+        cliente.usuario.toString() !== req.user.id && 
+        req.user.rol !== 'admin') {
       return res.status(403).json({
         success: false,
         message: 'No autorizado para actualizar este cliente'
@@ -223,7 +207,9 @@ exports.deleteCliente = async (req, res) => {
     }
 
     // Verificar propiedad del cliente
-    if (cliente.usuario.toString() !== req.user.id && req.user.rol !== 'admin') {
+    if (req.user && cliente.usuario && 
+        cliente.usuario.toString() !== req.user.id && 
+        req.user.rol !== 'admin') {
       return res.status(403).json({
         success: false,
         message: 'No autorizado para eliminar este cliente'
@@ -231,10 +217,12 @@ exports.deleteCliente = async (req, res) => {
     }
 
     // Verificar si tiene proyectos o facturas asociadas
-    const proyectosAsociados = await Proyecto.countDocuments({ cliente: req.params.id });
-    const facturasAsociadas = await Factura.countDocuments({ cliente: req.params.id });
+    const [proyectosCount, facturasCount] = await Promise.all([
+      Proyecto.countDocuments({ cliente: req.params.id }),
+      Factura.countDocuments({ cliente: req.params.id })
+    ]);
 
-    if (proyectosAsociados > 0 || facturasAsociadas > 0) {
+    if (proyectosCount > 0 || facturasCount > 0) {
       return res.status(400).json({
         success: false,
         message: 'No se puede eliminar el cliente porque tiene proyectos o facturas asociadas'
@@ -268,11 +256,11 @@ exports.getEstadisticasCliente = async (req, res) => {
       });
     }
 
-    // Obtener proyectos
-    const proyectos = await Proyecto.find({ cliente: req.params.id });
-    const facturas = await Factura.find({ cliente: req.params.id });
+    const [proyectos, facturas] = await Promise.all([
+      Proyecto.find({ cliente: req.params.id }),
+      Factura.find({ cliente: req.params.id })
+    ]);
 
-    // Calcular estadísticas
     const estadisticas = {
       totalProyectos: proyectos.length,
       proyectosActivos: proyectos.filter(p => p.estado === 'en_progreso').length,
@@ -280,10 +268,10 @@ exports.getEstadisticasCliente = async (req, res) => {
       totalFacturas: facturas.length,
       facturasPendientes: facturas.filter(f => f.estado === 'pendiente').length,
       facturasPagadas: facturas.filter(f => f.estado === 'pagada').length,
-      montoTotalFacturado: facturas.reduce((total, f) => total + f.total, 0),
+      montoTotalFacturado: facturas.reduce((total, f) => total + (f.total || 0), 0),
       montoPendiente: facturas
         .filter(f => f.estado === 'pendiente')
-        .reduce((total, f) => total + f.total, 0)
+        .reduce((total, f) => total + (f.total || 0), 0)
     };
 
     res.status(200).json({

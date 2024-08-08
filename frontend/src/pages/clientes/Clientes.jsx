@@ -14,16 +14,44 @@ import {
 export default function Clientes() {
   const [searchTerm, setSearchTerm] = useState('');
 
-  const { data: clientes, isLoading } = useQuery(
+  // Configurar la query con refetch
+  const { data: clientesResponse, isLoading, error } = useQuery(
     'clientes',
-    () => clientService.getAll()
+    async () => {
+      const response = await clientService.getAll();
+      console.log('API Response:', response); // Para depuración
+      return response;
+    },
+    {
+      refetchOnMount: true,
+      refetchOnWindowFocus: true,
+      staleTime: 0,
+      retry: 1,
+      onError: (error) => {
+        console.error('Error fetching clientes:', error);
+      }
+    }
   );
 
-  const filteredClientes = clientes?.data?.filter(cliente =>
-    cliente.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    cliente.empresa?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    cliente.email.toLowerCase().includes(searchTerm.toLowerCase())
+  // Extraer los datos de la respuesta
+  const clientes = clientesResponse?.data?.data || [];
+  console.log('Clientes procesados:', clientes); // Para depuración
+
+  // Filtrar clientes
+  const filteredClientes = clientes?.filter(cliente =>
+    cliente?.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    cliente?.empresa?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    cliente?.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  if (error) {
+    console.error('Error en el componente:', error);
+    return (
+      <div className="text-center py-12">
+        <p className="text-red-500">Error al cargar los clientes. Por favor, intenta de nuevo.</p>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -72,7 +100,7 @@ export default function Clientes() {
               </div>
             ))}
           </div>
-        ) : filteredClientes?.length === 0 ? (
+        ) : filteredClientes.length === 0 ? (
           <div className="text-center py-12">
             <UsersIcon className="mx-auto h-12 w-12 text-gray-400" />
             <h3 className="mt-2 text-sm font-medium text-gray-900">No hay clientes</h3>
@@ -91,7 +119,7 @@ export default function Clientes() {
           </div>
         ) : (
           <ul className="divide-y divide-gray-200">
-            {filteredClientes?.map((cliente) => (
+            {filteredClientes.map((cliente) => (
               <li key={cliente._id}>
                 <Link
                   to={`/clientes/${cliente._id}`}
