@@ -13,13 +13,13 @@ import {
 
 export default function Reportes() {
   // Obtener estadísticas de proyectos
-  const { data: proyectosStats, isLoading: loadingProyectos } = useQuery(
+  const { data: proyectosResponse, isLoading: loadingProyectos } = useQuery(
     'proyectosStats',
     () => projectService.getAll()
   );
 
   // Obtener estadísticas de clientes
-  const { data: clientesStats, isLoading: loadingClientes } = useQuery(
+  const { data: clientesResponse, isLoading: loadingClientes } = useQuery(
     'clientesStats',
     () => clientService.getAll()
   );
@@ -32,17 +32,21 @@ export default function Reportes() {
 
   const isLoading = loadingProyectos || loadingClientes || loadingFacturas;
 
+  // Obtener los arrays de datos de las respuestas
+  const proyectos = proyectosResponse?.data?.data || [];
+  const clientes = clientesResponse?.data?.data || [];
+
   // Calcular estadísticas
   const stats = {
     proyectos: {
-      total: proyectosStats?.data?.length || 0,
-      activos: proyectosStats?.data?.filter(p => p.estado === 'en_progreso').length || 0,
-      completados: proyectosStats?.data?.filter(p => p.estado === 'completado').length || 0,
-      atrasados: proyectosStats?.data?.filter(p => new Date(p.fechaFinalizacion) < new Date()).length || 0,
+      total: proyectos.length,
+      activos: proyectos.filter(p => p.estado === 'en_progreso').length,
+      completados: proyectos.filter(p => p.estado === 'completado').length,
+      atrasados: proyectos.filter(p => new Date(p.fechaFinalizacion) < new Date()).length,
     },
     clientes: {
-      total: clientesStats?.data?.length || 0,
-      activos: clientesStats?.data?.filter(c => c.proyectos?.some(p => p.estado === 'en_progreso')).length || 0,
+      total: clientes.length,
+      activos: clientes.length, // Por ahora asumimos que todos los clientes están activos
     },
     facturas: facturasStats?.data || {
       totalFacturas: 0,
@@ -53,6 +57,21 @@ export default function Reportes() {
       montoPendiente: 0,
       montoCobrado: 0,
     },
+  };
+
+  // Función auxiliar para formatear moneda
+  const formatCurrency = (amount) => {
+    if (isLoading || amount === undefined) return '...';
+    return amount.toLocaleString('es-MX', {
+      style: 'currency',
+      currency: 'MXN',
+    });
+  };
+
+  // Función auxiliar para calcular porcentajes
+  const calculatePercentage = (value, total) => {
+    if (isLoading || !value || !total) return '0.0';
+    return ((value / total) * 100).toFixed(1);
   };
 
   return (
@@ -92,15 +111,15 @@ export default function Reportes() {
           <div className="bg-gray-50 px-5 py-3">
             <div className="text-sm">
               <div className="font-medium text-primary-700">
-                Total de proyectos: {stats.proyectos.total}
+                Total de proyectos: {isLoading ? '...' : stats.proyectos.total}
               </div>
               <div className="mt-1">
                 <span className="text-green-600">
-                  {stats.proyectos.completados} completados
+                  {isLoading ? '...' : stats.proyectos.completados} completados
                 </span>
                 {' · '}
                 <span className="text-red-600">
-                  {stats.proyectos.atrasados} atrasados
+                  {isLoading ? '...' : stats.proyectos.atrasados} atrasados
                 </span>
               </div>
             </div>
@@ -131,7 +150,7 @@ export default function Reportes() {
           <div className="bg-gray-50 px-5 py-3">
             <div className="text-sm">
               <div className="font-medium text-primary-700">
-                Total de clientes: {stats.clientes.total}
+                Total de clientes: {isLoading ? '...' : stats.clientes.total}
               </div>
             </div>
           </div>
@@ -151,12 +170,7 @@ export default function Reportes() {
                   </dt>
                   <dd>
                     <div className="text-lg font-medium text-gray-900">
-                      {isLoading
-                        ? '...'
-                        : stats.facturas.montoTotalFacturado.toLocaleString('es-MX', {
-                            style: 'currency',
-                            currency: 'MXN',
-                          })}
+                      {formatCurrency(stats.facturas.montoTotalFacturado)}
                     </div>
                   </dd>
                 </dl>
@@ -166,15 +180,15 @@ export default function Reportes() {
           <div className="bg-gray-50 px-5 py-3">
             <div className="text-sm">
               <div className="font-medium text-primary-700">
-                {stats.facturas.facturasPagadas} facturas pagadas
+                {isLoading ? '...' : stats.facturas.facturasPagadas} facturas pagadas
               </div>
               <div className="mt-1">
                 <span className="text-yellow-600">
-                  {stats.facturas.facturasPendientes} pendientes
+                  {isLoading ? '...' : stats.facturas.facturasPendientes} pendientes
                 </span>
                 {' · '}
                 <span className="text-red-600">
-                  {stats.facturas.facturasVencidas} vencidas
+                  {isLoading ? '...' : stats.facturas.facturasVencidas} vencidas
                 </span>
               </div>
             </div>
@@ -194,10 +208,7 @@ export default function Reportes() {
               <div className="relative overflow-hidden rounded-lg bg-white px-4 py-5 sm:px-6">
                 <dt className="text-sm font-medium text-gray-500">Monto Cobrado</dt>
                 <dd className="mt-1 text-3xl font-semibold text-gray-900">
-                  {stats.facturas.montoCobrado.toLocaleString('es-MX', {
-                    style: 'currency',
-                    currency: 'MXN',
-                  })}
+                  {formatCurrency(stats.facturas.montoCobrado)}
                 </dd>
                 <dd className="mt-2 flex items-center text-sm text-green-600">
                   <ArrowTrendingUpIcon
@@ -205,17 +216,14 @@ export default function Reportes() {
                     aria-hidden="true"
                   />
                   <span className="ml-2">
-                    {((stats.facturas.montoCobrado / stats.facturas.montoTotalFacturado) * 100).toFixed(1)}% del total facturado
+                    {calculatePercentage(stats.facturas.montoCobrado, stats.facturas.montoTotalFacturado)}% del total facturado
                   </span>
                 </dd>
               </div>
               <div className="relative overflow-hidden rounded-lg bg-white px-4 py-5 sm:px-6">
                 <dt className="text-sm font-medium text-gray-500">Monto Pendiente</dt>
                 <dd className="mt-1 text-3xl font-semibold text-gray-900">
-                  {stats.facturas.montoPendiente.toLocaleString('es-MX', {
-                    style: 'currency',
-                    currency: 'MXN',
-                  })}
+                  {formatCurrency(stats.facturas.montoPendiente)}
                 </dd>
                 <dd className="mt-2 flex items-center text-sm text-yellow-600">
                   <ClockIcon
@@ -223,7 +231,7 @@ export default function Reportes() {
                     aria-hidden="true"
                   />
                   <span className="ml-2">
-                    {stats.facturas.facturasPendientes} facturas por cobrar
+                    {isLoading ? '...' : stats.facturas.facturasPendientes} facturas por cobrar
                   </span>
                 </dd>
               </div>
@@ -241,7 +249,7 @@ export default function Reportes() {
               <div className="relative overflow-hidden rounded-lg bg-white px-4 py-5 sm:px-6">
                 <dt className="text-sm font-medium text-gray-500">Tasa de Completitud</dt>
                 <dd className="mt-1 text-3xl font-semibold text-gray-900">
-                  {((stats.proyectos.completados / stats.proyectos.total) * 100).toFixed(1)}%
+                  {calculatePercentage(stats.proyectos.completados, stats.proyectos.total)}%
                 </dd>
                 <dd className="mt-2 flex items-center text-sm text-green-600">
                   <ArrowTrendingUpIcon
@@ -249,14 +257,14 @@ export default function Reportes() {
                     aria-hidden="true"
                   />
                   <span className="ml-2">
-                    {stats.proyectos.completados} proyectos completados
+                    {isLoading ? '...' : stats.proyectos.completados} proyectos completados
                   </span>
                 </dd>
               </div>
               <div className="relative overflow-hidden rounded-lg bg-white px-4 py-5 sm:px-6">
                 <dt className="text-sm font-medium text-gray-500">Proyectos por Cliente</dt>
                 <dd className="mt-1 text-3xl font-semibold text-gray-900">
-                  {(stats.proyectos.total / stats.clientes.total || 0).toFixed(1)}
+                  {isLoading ? '...' : (stats.proyectos.total / (stats.clientes.total || 1)).toFixed(1)}
                 </dd>
                 <dd className="mt-2 flex items-center text-sm text-primary-600">
                   <UsersIcon

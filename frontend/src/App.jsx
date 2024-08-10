@@ -12,7 +12,7 @@ import ResetPassword from './pages/auth/ResetPassword';
 import Dashboard from './pages/Dashboard';
 import Proyectos from './pages/proyectos/Proyectos';
 import ClientesRoutes from './pages/clientes/ClientesRoutes';
-import Facturas from './pages/facturas/Facturas';
+import FacturasRoutes from './pages/facturas/FacturasRoutes';
 import Reportes from './pages/reportes/Reportes';
 import Perfil from './pages/perfil/Perfil';
 import Configuracion from './pages/configuracion/Configuracion';
@@ -41,7 +41,7 @@ function App() {
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="proyectos/*" element={<Proyectos />} />
             <Route path="clientes/*" element={<ClientesRoutes />} />
-            <Route path="facturas/*" element={<Facturas />} />
+            <Route path="facturas/*" element={<FacturasRoutes />} />
             <Route path="reportes" element={<Reportes />} />
             <Route path="perfil" element={<Perfil />} />
             <Route path="configuracion" element={<Configuracion />} />

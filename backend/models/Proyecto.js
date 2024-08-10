@@ -137,7 +137,7 @@ proyectoSchema.index({ fechaFinalizacion: 1 });
 
 // Virtual para calcular el progreso del proyecto
 proyectoSchema.virtual('progreso').get(function() {
-  if (!this.tareas.length) return 0;
+  if (!this.tareas?.length) return 0;
   
   const tareasCompletadas = this.tareas.filter(
     tarea => tarea.estado === 'completada'

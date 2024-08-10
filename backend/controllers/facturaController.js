@@ -1,118 +1,41 @@
 const Factura = require('../models/Factura');
-const Proyecto = require('../models/Proyecto');
-const Cliente = require('../models/Cliente');
-const sendEmail = require('../utils/sendEmail');
 
-// Obtener todas las facturas
+// @desc    Obtener todas las facturas
+// @route   GET /api/v1/facturas
+// @access  Private
 exports.getFacturas = async (req, res) => {
   try {
-    let query;
-
-    // Copia de req.query
-    const reqQuery = { ...req.query };
-
-    // Campos a excluir
-    const removeFields = ['select', 'sort', 'page', 'limit'];
-    removeFields.forEach(param => delete reqQuery[param]);
-
-    // Filtrar por usuario emisor si no es admin
-    if (req.user.rol !== 'admin') {
-      reqQuery.emisor = req.user.id;
-    }
-
-    // Crear query string
-    let queryStr = JSON.stringify(reqQuery);
-    queryStr = queryStr.replace(/\b(gt|gte|lt|lte|in)\b/g, match => `$${match}`);
-
-    // Encontrar facturas
-    query = Factura.find(JSON.parse(queryStr));
-
-    // Select Fields
-    if (req.query.select) {
-      const fields = req.query.select.split(',').join(' ');
-      query = query.select(fields);
-    }
-
-    // Sort
-    if (req.query.sort) {
-      const sortBy = req.query.sort.split(',').join(' ');
-      query = query.sort(sortBy);
-    } else {
-      query = query.sort('-fechaEmision');
-    }
-
-    // Pagination
-    const page = parseInt(req.query.page, 10) || 1;
-    const limit = parseInt(req.query.limit, 10) || 10;
-    const startIndex = (page - 1) * limit;
-    const endIndex = page * limit;
-    const total = await Factura.countDocuments(JSON.parse(queryStr));
-
-    query = query.skip(startIndex).limit(limit);
-
-    // Populate
-    query = query.populate([
-      { path: 'cliente', select: 'nombre email empresa' },
-      { path: 'proyecto', select: 'nombre' },
-      { path: 'emisor', select: 'nombre email' }
-    ]);
-
-    // Ejecutar query
-    const facturas = await query;
-
-    // Pagination result
-    const pagination = {};
-
-    if (endIndex < total) {
-      pagination.next = {
-        page: page + 1,
-        limit
-      };
-    }
-
-    if (startIndex > 0) {
-      pagination.prev = {
-        page: page - 1,
-        limit
-      };
-    }
-
+    const facturas = await Factura.find({ emisor: req.user.id })
+      .populate('cliente')
+      .populate('proyecto')
+      .sort({ fechaEmision: -1 });
+    
     res.status(200).json({
       success: true,
-      count: facturas.length,
-      pagination,
       data: facturas
     });
   } catch (error) {
+    console.error('Error al obtener facturas:', error);
     res.status(500).json({
       success: false,
-      message: 'Error al obtener facturas',
-      error: error.message
+      error: 'Error al obtener las facturas'
     });
   }
 };
 
-// Obtener una factura específica
+// @desc    Obtener una factura
+// @route   GET /api/v1/facturas/:id
+// @access  Private
 exports.getFactura = async (req, res) => {
   try {
-    const factura = await Factura.findById(req.params.id).populate([
-      { path: 'cliente', select: 'nombre email empresa direccion' },
-      { path: 'proyecto', select: 'nombre descripcion' },
-      { path: 'emisor', select: 'nombre email' }
-    ]);
-
+    const factura = await Factura.findById(req.params.id)
+      .populate('cliente')
+      .populate('proyecto');
+    
     if (!factura) {
       return res.status(404).json({
         success: false,
-        message: 'Factura no encontrada'
-      });
-    }
-
-    // Verificar autorización
-    if (factura.emisor.toString() !== req.user.id && req.user.rol !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'No autorizado para ver esta factura'
+        error: 'Factura no encontrada'
       });
     }
 
@@ -121,77 +44,78 @@ exports.getFactura = async (req, res) => {
       data: factura
     });
   } catch (error) {
+    console.error('Error al obtener factura:', error);
     res.status(500).json({
       success: false,
-      message: 'Error al obtener la factura',
-      error: error.message
+      error: 'Error al obtener la factura'
     });
   }
 };
 
-// Crear nueva factura
+// @desc    Crear nueva factura
+// @route   POST /api/v1/facturas
+// @access  Private
 exports.crearFactura = async (req, res) => {
   try {
-    // Verificar proyecto y cliente
-    const proyecto = await Proyecto.findById(req.body.proyecto);
-    if (!proyecto) {
-      return res.status(404).json({
-        success: false,
-        message: 'Proyecto no encontrado'
-      });
-    }
-
-    const cliente = await Cliente.findById(req.body.cliente);
-    if (!cliente) {
-      return res.status(404).json({
-        success: false,
-        message: 'Cliente no encontrado'
-      });
-    }
-
-    // Asignar emisor
-    req.body.emisor = req.user.id;
-
     // Generar número de factura
-    req.body.numero = await Factura.generarNumeroFactura();
+    const ultimaFactura = await Factura.findOne().sort({ numero: -1 });
+    const ultimoNumero = ultimaFactura ? parseInt(ultimaFactura.numero.slice(4)) : 0;
+    const nuevoNumero = `FAC-${(ultimoNumero + 1).toString().padStart(6, '0')}`;
 
-    // Calcular totales
-    let subtotal = 0;
-    req.body.items.forEach(item => {
-      item.subtotal = item.cantidad * item.precioUnitario;
-      subtotal += item.subtotal;
-    });
+    // Calcular subtotal y total
+    const items = req.body.items.map(item => ({
+      ...item,
+      subtotal: item.cantidad * item.precioUnitario
+    }));
 
-    req.body.subtotal = subtotal;
-    req.body.total = subtotal + (req.body.impuestos?.iva || 0) + (req.body.impuestos?.otros || 0);
+    const subtotal = items.reduce((acc, item) => acc + item.subtotal, 0);
+    const iva = subtotal * 0.16;
+    const total = subtotal + iva;
 
-    const factura = await Factura.create(req.body);
+    // Crear objeto de factura
+    const facturaData = {
+      numero: nuevoNumero,
+      cliente: req.body.cliente,
+      proyecto: req.body.proyecto,
+      emisor: req.user.id,
+      estado: 'pendiente',
+      fechaEmision: req.body.fechaEmision || new Date(),
+      fechaVencimiento: req.body.fechaVencimiento,
+      items: items,
+      subtotal: subtotal,
+      impuestos: {
+        iva: iva,
+        otros: req.body.impuestos?.otros || 0
+      },
+      total: total,
+      moneda: req.body.moneda || 'MXN',
+      metodoPago: req.body.metodoPago || 'transferencia',
+      notas: req.body.notas,
+      datosFacturacion: req.body.datosFacturacion
+    };
 
-    // Enviar email al cliente
-    try {
-      await sendEmail({
-        email: cliente.email,
-        subject: `Nueva factura ${factura.numero}`,
-        mensaje: `Se ha generado una nueva factura por un total de ${factura.total} ${factura.moneda}. Por favor, revise los detalles adjuntos.`
-      });
-    } catch (err) {
-      console.log('Error al enviar email de factura:', err);
-    }
+    const factura = await Factura.create(facturaData);
+    
+    // Poblar referencias para la respuesta
+    await factura.populate(['cliente', 'proyecto']);
 
     res.status(201).json({
       success: true,
       data: factura
     });
   } catch (error) {
-    res.status(400).json({
+    console.error('Error al crear factura:', error);
+    res.status(500).json({
       success: false,
-      message: 'Error al crear la factura',
-      error: error.message
+      error: 'Error al crear la factura',
+      details: error.message
     });
   }
 };
 
-// Actualizar factura
+// @desc    Actualizar factura
+// @route   PUT /api/v1/facturas/:id
+// @access  Private
 exports.updateFactura = async (req, res) => {
   try {
     let factura = await Factura.findById(req.params.id);
@@ -199,54 +123,63 @@ exports.updateFactura = async (req, res) => {
     if (!factura) {
       return res.status(404).json({
         success: false,
-        message: 'Factura no encontrada'
+        error: 'Factura no encontrada'
       });
     }
 
-    // Verificar autorización
-    if (factura.emisor.toString() !== req.user.id && req.user.rol !== 'admin') {
-      return res.status(403).json({
+    // Verificar propiedad
+    if (factura.emisor.toString() !== req.user.id) {
+      return res.status(401).json({
         success: false,
-        message: 'No autorizado para actualizar esta factura'
+        error: 'No autorizado para actualizar esta factura'
       });
     }
 
-    // No permitir modificar número de factura
-    if (req.body.numero) {
-      delete req.body.numero;
-    }
-
-    // Recalcular totales si se modifican items
+    // Si se actualizan los items, recalcular totales
     if (req.body.items) {
-      let subtotal = 0;
-      req.body.items.forEach(item => {
-        item.subtotal = item.cantidad * item.precioUnitario;
-        subtotal += item.subtotal;
-      });
+      const items = req.body.items.map(item => ({
+        ...item,
+        subtotal: item.cantidad * item.precioUnitario
+      }));
 
+      const subtotal = items.reduce((acc, item) => acc + item.subtotal, 0);
+      const iva = subtotal * 0.16;
+      const total = subtotal + iva;
+
+      req.body.items = items;
       req.body.subtotal = subtotal;
-      req.body.total = subtotal + (req.body.impuestos?.iva || 0) + (req.body.impuestos?.otros || 0);
+      req.body.impuestos = {
+        ...req.body.impuestos,
+        iva: iva
+      };
+      req.body.total = total;
     }
 
-    factura = await Factura.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true
-    });
+    factura = await Factura.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      {
+        new: true,
+        runValidators: true
+      }
+    ).populate(['cliente', 'proyecto']);
 
     res.status(200).json({
       success: true,
       data: factura
     });
   } catch (error) {
-    res.status(400).json({
+    console.error('Error al actualizar factura:', error);
+    res.status(500).json({
       success: false,
-      message: 'Error al actualizar la factura',
-      error: error.message
+      error: 'Error al actualizar la factura'
     });
   }
 };
 
-// Registrar pago
+// @desc    Registrar pago de factura
+// @route   POST /api/v1/facturas/:id/pagos
+// @access  Private
 exports.registrarPago = async (req, res) => {
   try {
     const factura = await Factura.findById(req.params.id);
@@ -254,32 +187,28 @@ exports.registrarPago = async (req, res) => {
     if (!factura) {
       return res.status(404).json({
         success: false,
-        message: 'Factura no encontrada'
+        error: 'Factura no encontrada'
       });
     }
 
-    // Verificar autorización
-    if (factura.emisor.toString() !== req.user.id && req.user.rol !== 'admin') {
-      return res.status(403).json({
+    // Verificar propiedad
+    if (factura.emisor.toString() !== req.user.id) {
+      return res.status(401).json({
         success: false,
-        message: 'No autorizado para registrar pagos en esta factura'
+        error: 'No autorizado para registrar pagos en esta factura'
       });
     }
 
-    // Agregar pago al historial
-    factura.historialPagos.push({
+    const pago = {
       fecha: new Date(),
       monto: req.body.monto,
       metodoPago: req.body.metodoPago,
       referencia: req.body.referencia,
       notas: req.body.notas
-    });
+    };
 
-    // Actualizar estado si el pago completa el total
-    if (factura.montoPendiente <= 0) {
-      factura.estado = 'pagada';
-    }
-
+    factura.historialPagos.push(pago);
+    factura.estado = 'pagada';
     await factura.save();
 
     res.status(200).json({
@@ -287,118 +216,100 @@ exports.registrarPago = async (req, res) => {
       data: factura
     });
   } catch (error) {
-    res.status(400).json({
+    console.error('Error al registrar pago:', error);
+    res.status(500).json({
       success: false,
-      message: 'Error al registrar el pago',
-      error: error.message
+      error: 'Error al registrar el pago'
     });
   }
 };
 
-// Enviar recordatorio
+// @desc    Enviar recordatorio de pago
+// @route   POST /api/v1/facturas/:id/recordatorio
+// @access  Private
 exports.enviarRecordatorio = async (req, res) => {
   try {
-    const factura = await Factura.findById(req.params.id).populate({
-      path: 'cliente',
-      select: 'email nombre'
-    });
+    const factura = await Factura.findById(req.params.id);
 
     if (!factura) {
       return res.status(404).json({
         success: false,
-        message: 'Factura no encontrada'
+        error: 'Factura no encontrada'
       });
     }
 
-    if (factura.estado !== 'pendiente' && factura.estado !== 'vencida') {
-      return res.status(400).json({
+    // Verificar propiedad
+    if (factura.emisor.toString() !== req.user.id) {
+      return res.status(401).json({
         success: false,
-        message: 'Solo se pueden enviar recordatorios de facturas pendientes o vencidas'
+        error: 'No autorizado para enviar recordatorios de esta factura'
       });
     }
 
-    // Enviar email de recordatorio
-    await sendEmail({
-      email: factura.cliente.email,
-      subject: `Recordatorio de pago - Factura ${factura.numero}`,
-      mensaje: `Estimado ${factura.cliente.nombre},\n\nLe recordamos que tiene pendiente el pago de la factura ${factura.numero} por un monto de ${factura.total} ${factura.moneda}.\n\nPor favor, realice el pago lo antes posible.`
-    });
-
-    // Registrar recordatorio
-    factura.recordatoriosEnviados.push({
+    const recordatorio = {
       fecha: new Date(),
       tipo: 'email',
       exitoso: true
-    });
+    };
 
+    factura.recordatoriosEnviados.push(recordatorio);
     await factura.save();
-
+    
     res.status(200).json({
       success: true,
       message: 'Recordatorio enviado exitosamente'
     });
   } catch (error) {
+    console.error('Error al enviar recordatorio:', error);
     res.status(500).json({
       success: false,
-      message: 'Error al enviar recordatorio',
-      error: error.message
+      error: 'Error al enviar el recordatorio'
     });
   }
 };
 
-// Obtener estadísticas de facturación
+// @desc    Obtener estadísticas de facturación
+// @route   GET /api/v1/facturas/estadisticas
+// @access  Private
 exports.getEstadisticasFacturacion = async (req, res) => {
   try {
-    // Construir el query base
-    const query = req.user.rol !== 'admin' ? { emisor: req.user.id } : {};
-
-    // Obtener el mes actual
-    const now = new Date();
-    const primerDiaMes = new Date(now.getFullYear(), now.getMonth(), 1);
-    const ultimoDiaMes = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-    // Agregar filtro de fecha para el mes actual
-    const queryMesActual = {
-      ...query,
-      fechaEmision: {
-        $gte: primerDiaMes,
-        $lte: ultimoDiaMes
+    const stats = await Factura.aggregate([
+      {
+        $match: { emisor: req.user._id }
+      },
+      {
+        $group: {
+          _id: null,
+          totalFacturado: { $sum: '$total' },
+          totalPagado: {
+            $sum: {
+              $cond: [{ $eq: ['$estado', 'pagada'] }, '$total', 0]
+            }
+          },
+          totalPendiente: {
+            $sum: {
+              $cond: [{ $eq: ['$estado', 'pendiente'] }, '$total', 0]
+            }
+          },
+          cantidadFacturas: { $sum: 1 }
+        }
       }
-    };
-
-    // Obtener todas las facturas y las del mes actual
-    const [todasFacturas, facturasMesActual] = await Promise.all([
-      Factura.find(query),
-      Factura.find(queryMesActual)
     ]);
-
-    // Calcular estadísticas
-    const estadisticas = {
-      totalFacturas: todasFacturas.length,
-      facturasPendientes: todasFacturas.filter(f => f.estado === 'pendiente').length,
-      facturasVencidas: todasFacturas.filter(f => f.estado === 'vencida').length,
-      facturasPagadas: todasFacturas.filter(f => f.estado === 'pagada').length,
-      montoTotalFacturado: todasFacturas.reduce((total, f) => total + f.total, 0),
-      montoFacturadoMesActual: facturasMesActual.reduce((total, f) => total + f.total, 0),
-      montoPendiente: todasFacturas
-        .filter(f => f.estado === 'pendiente' || f.estado === 'vencida')
-        .reduce((total, f) => total + f.montoPendiente, 0),
-      montoCobrado: todasFacturas
-        .reduce((total, f) => total + (f.total - f.montoPendiente), 0),
-      montoCobradoMesActual: facturasMesActual
-        .reduce((total, f) => total + (f.total - f.montoPendiente), 0)
-    };
 
     res.status(200).json({
       success: true,
-      data: estadisticas
+      data: stats[0] || {
+        totalFacturado: 0,
+        totalPagado: 0,
+        totalPendiente: 0,
+        cantidadFacturas: 0
+      }
     });
   } catch (error) {
     console.error('Error al obtener estadísticas:', error);
     res.status(500).json({
       success: false,
-      message: 'Error al obtener estadísticas de facturación',
-      error: error.message
+      error: 'Error al obtener las estadísticas'
     });
   }
 };

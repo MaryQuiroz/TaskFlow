@@ -23,12 +23,15 @@ export default function Facturas() {
       const response = await invoiceService.getAll({ 
         estado: filterStatus !== 'todas' ? filterStatus : undefined 
       });
-      return response.data;
+      return response?.data || { data: [], count: 0, pagination: {} };
     },
     {
       enabled: !!token,
       staleTime: 30000, // Considerar datos frescos por 30 segundos
       retry: 2, // Reintentar 2 veces en caso de error
+      onError: (error) => {
+        console.error('Error al cargar facturas:', error);
+      }
     }
   );
 
@@ -36,8 +39,8 @@ export default function Facturas() {
   const facturas = data?.data || [];
 
   const filteredFacturas = facturas.filter(factura =>
-    factura.numero.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    factura.cliente?.nombre?.toLowerCase().includes(searchTerm.toLowerCase())
+    factura?.numero?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    factura?.cliente?.nombre?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getStatusBadgeClass = (estado) => {
@@ -174,7 +177,7 @@ export default function Facturas() {
                       <div className="sm:flex">
                         <p className="flex items-center text-sm text-gray-500">
                           <BuildingOfficeIcon className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" />
-                          {factura.cliente?.nombre}
+                          {factura.cliente?.nombre || 'Cliente no disponible'}
                         </p>
                         <p className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0 sm:ml-6">
                           <CalendarIcon className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" />
@@ -182,9 +185,9 @@ export default function Facturas() {
                         </p>
                         <p className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0 sm:ml-6">
                           <CurrencyDollarIcon className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" />
-                          {factura.total.toLocaleString('es-MX', {
+                          {factura.total?.toLocaleString('es-MX', {
                             style: 'currency',
-                            currency: factura.moneda
+                            currency: factura.moneda || 'MXN'
                           })}
                         </p>
                       </div>
@@ -196,14 +199,14 @@ export default function Facturas() {
                       </div>
                     </div>
                     {/* Información de pagos */}
-                    {factura.estado !== 'pagada' && (
+                    {factura.estado !== 'pagada' && factura.montoPendiente !== undefined && (
                       <div className="mt-2 text-sm">
                         <p className="text-gray-500">
                           Pendiente:{' '}
                           <span className="font-medium text-gray-900">
                             {factura.montoPendiente?.toLocaleString('es-MX', {
                               style: 'currency',
-                              currency: factura.moneda
+                              currency: factura.moneda || 'MXN'
                             })}
                           </span>
                         </p>
